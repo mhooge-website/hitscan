@@ -1,7 +1,13 @@
-const SPAWN_RATE = 2000//150;
+const SPAWN_RATE = 150;
+const SPAWN_AMOUNT = 32;
+const DEATHZONE_RATES = [200, 200, 200, 200, 400];
+const DEATHZONE_WINDUP = 4;
+const MAX_SPEED = 8;
+const MIN_SPEED = 2;
+var DEATH_ZONES;
 
 function wave1FlavorText() {
-    return "Humble Beginnings";
+    return "Meteor Shower";
 }
 
 function wave1StartBox(canvas) {
@@ -15,74 +21,63 @@ function wave1StartBox(canvas) {
     }
 }
 
-function createEnemy(x, y, deltaX, deltaY) {
-    return {
-        shape: "poly",
-        color: "cyan",
-        dx: deltaX,
-        dy: deltaY,
-        points: [
-            {
-                x: x-20,
-                y: y-20
-            },
-            {
-                x: x-10,
-                y: y-25
-            },
-            {
-                x: x+5,
-                y: y-15
-            },
-            {
-                x: x+15,
-                y: y-5
-            },
-            {
-                x: x+5,
-                y: y+10
-            },
-            {
-                x: x-5,
-                y: y+15
-            }
-        ],
-        getBoundingRect: function() {
-            let lowX = 100000;
-            let lowY = 100000;
-            let hiX = -100000;
-            let hiY = -100000;
-            for (let i = 0; i < this.points.length; i++) {
-                let x = this.points[i].x;
-                let y = this.points[i].y;
-                if (x < lowX) lowX = x;
-                else if (x > hiX) hiX = x;
-                if (y < lowY) lowY = y;
-                else if (y > hiY) hiY = y;
-            }
-            return {
-                x: lowX,
-                y: lowY,
-                w: hiX - lowX,
-                h: hiY - lowY
-            }
-        }
-    }
+function wave1Init(canvas, tickrate) {
+    let boundRect = canvas.getBoundingClientRect();    
+    DEATH_ZONES = [
+        createDeathzone(boundRect.width/4, boundRect.height/4, boundRect.width/2, boundRect.height/2, [220, 0, 0], DEATHZONE_WINDUP * tickrate, 1, true),
+        createDeathzone(boundRect.width/4, 0, boundRect.width/2, boundRect.height/4, [220, 0, 0], DEATHZONE_WINDUP * tickrate),
+        createDeathzone(boundRect.width/4, boundRect.height - boundRect.height/4, boundRect.width/2, boundRect.height/4, [220, 0, 0], DEATHZONE_WINDUP * tickrate),
+        createDeathzone(boundRect.width/2 + boundRect.width/4 - 1, 0, boundRect.width/4+1, boundRect.height, [220, 0, 0], DEATHZONE_WINDUP * tickrate),
+        createDeathzone(0, 0, boundRect.width/4+1, boundRect.height, [220, 0, 0], DEATHZONE_WINDUP * tickrate)
+    ]
 }
 
-function wave1Loop(canvas, enemies, tick) {
-    const SPAWN_AMOUNT = 10;
+function getRandomSpeed() {
+    return MIN_SPEED + Math.random() * (MAX_SPEED - MIN_SPEED)
+}
+
+function wave1Loop(canvas, enemies, deathZones, tick) {
+    const SPAWN_SPACES = 4;
+    const POLY_VARIANCE = (POLY_MAX - POLY_MIN);
     if (tick % SPAWN_RATE == 0) {
         let canvasRect = canvas.getBoundingClientRect();
         for (let i = 0; i < SPAWN_AMOUNT; i++) {
-            let x = canvasRect.left + (tick % 50) + (i * (canvas.width / SPAWN_AMOUNT));
-            let y = canvasRect.top;
-            let speed = 1 + Math.random() * 4;
-            enemies.push(createEnemy(x, y, 0, speed));
+            let spawnPos = i / (SPAWN_AMOUNT / 4);
+            let baselineX = spawnPos < 2;
+            let x = 0, y = 0, speedX = 0, speedY = 0;
+            if (baselineX) {
+                let baseline = canvasRect.width;
+                let offset = canvasRect.left
+                staticPos = spawnPos < 1 ? canvasRect.top - 10 : canvasRect.height - canvasRect.top - POLY_VARIANCE;
+                x = offset + (tick % 50) + ((i % (SPAWN_AMOUNT/SPAWN_SPACES)) * SPAWN_SPACES * (baseline / SPAWN_AMOUNT));
+                y = staticPos;
+                speedX = getRandomSpeed();
+                speedX = Math.random() > 0.5 ? speedX : -speedX;
+                speedY = getRandomSpeed();
+                speedY = spawnPos < 1 ? speedY : -speedY;
+            }
+            else {
+                let baseline = canvasRect.height;
+                let offset = canvasRect.top
+                let staticPos = spawnPos < 3 ? canvasRect.left - 10 : canvasRect.width - canvasRect.top - POLY_VARIANCE;
+                x = staticPos;
+                y = offset + (tick % 50) + ((i % (SPAWN_AMOUNT/SPAWN_SPACES)) * SPAWN_SPACES * (baseline / SPAWN_AMOUNT));
+                speedX = getRandomSpeed();
+                speedX = spawnPos < 3 ? speedX : -speedX;
+                speedY = getRandomSpeed();
+                speedY = Math.random() > 0.5 ? speedY : -speedY;
+            }
+            enemies.push(createEnemy(x, y, speedX, speedY, "rand_poly", "gray", 8));
         }
+    }
+    if (tick > 0 && tick % DEATHZONE_RATES[DEATHZONE_RATES.length-1] == 0 && DEATH_ZONES.length > 0) {
+        DEATHZONE_RATES.pop();
+        deathZones.push(DEATH_ZONES.pop());
     }
     return {
         newEnemies: enemies,
+        newDeathzones: deathZones,
+        timeToSurvive: SURVIVAL_TIME,
         finished: false
     }
 }
