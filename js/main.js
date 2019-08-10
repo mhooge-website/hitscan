@@ -1,33 +1,32 @@
-const TICK_RATE = 60;
 const TEXT_FADE_DURATION = 3500;
 const MOVE_RATE = 2;
 const DEATHZONE_GROW_RATE = 10;
 const DEBUG = 0;
+var TOTAL_WAVES = 1;
 
-async function mainLoop() {
-    let currWave = 1;
-    while (true) {
-        let mousePos = {x: 0, y: 0};
-        if (DEBUG == 0) {
-            // Draw round intro text.
-            await drawRoundIntro(currWave);
-            // Draw mouse start box.
-            await drawStartBox(currWave).then(function(pos) {
-                mousePos = pos;
-            });
-            // Draw good luck message.
-            await drawGoodLuck();
-        }
-        await startWave(currWave);
-        // Start round obstacles.
-        roundLoop(currWave, mousePos).then(function() {
-            showWinnerText();
-        }, function() {
-            showDeathText();
+async function mainLoop(wave=1, showIntro=true) {
+    let mousePos = {x: 0, y: 0};
+    if (showIntro || DEBUG == 0) {
+        // Draw round intro text.
+        await drawRoundIntro(wave);
+        // Draw mouse start box.
+        await drawStartBox(wave).then(function(pos) {
+            mousePos = pos;
         });
-        currWave++;
-        break;
+        // Draw good luck message.
+        await drawGoodLuck();
     }
+    // Start round obstacles.
+    roundLoop(wave, mousePos).then(async function() {
+        await showWinnerText();
+        eraseRect(canvas.getContext("2d"), getCanvasBox());
+        mainLoop(wave+1);
+    }, async function(quit) {
+        if (!quit) {
+            await showDeathText();
+        }
+        swapViews("game-div", "menu-div");
+    });
 }
 
 function enemyDespawn(canvas, box) {
@@ -51,9 +50,7 @@ function removeEnemies(indices, enemies) {
 }
 
 function addFadeOverlay() {
-    let canvas = getCanvas();
-    let boundRect = getCanvas().getBoundingClientRect();
-    let box = {x: 0, y: 0, w: boundRect.width, h: boundRect.height};
+    let box = getCanvasBox();
     let ctx = canvas.getContext("2d");
     const duration = 1500;
     const delay = 30;
@@ -68,19 +65,21 @@ function addFadeOverlay() {
 }
 
 function showDeathText() {
-    addFadeOverlay();
-    setTimeout(function() {
-        let gameDiv = document.getElementById("game-div");
-        let tooltip = createTooltip("<span class='tooltip-main'>You got hit</span><br>"+
-            "<span class='tooltip-sub'>Better luck next time!</span>"
-        )
-        tooltip.style.color = "red";
-        gameDiv.appendChild(tooltip);
+    return new Promise(function(resolve, reject) {
+        addFadeOverlay();
         setTimeout(function() {
-            gameDiv.removeChild(tooltip);
-            swapViews("game-div", "menu-div");
-        }, TEXT_FADE_DURATION);
-    }, 500);
+            let gameDiv = document.getElementById("game-div");
+            let tooltip = createTooltip("<span class='tooltip-main'>You got hit</span><br>"+
+                "<span class='tooltip-sub'>Better luck next time!</span>"
+            )
+            tooltip.style.color = "red";
+            gameDiv.appendChild(tooltip);
+            setTimeout(function() {
+                gameDiv.removeChild(tooltip);
+                resolve();
+            }, TEXT_FADE_DURATION);
+        }, 500);
+    });
 }
 
 function showWinnerText() {
@@ -98,6 +97,11 @@ function showWinnerText() {
             }, TEXT_FADE_DURATION);
         }, 500);
     });
+}
+
+function getCanvasBox() {
+    let boundRect = canvas.getBoundingClientRect();
+    return {x: 0, y: 0, w: boundRect.width, h: boundRect.height};
 }
 
 function updateTimeLeft(time) {
@@ -136,7 +140,7 @@ function roundLoop(wave, mousePos) {
                     (zone.reversed && !contains(mousePos.x, mousePos.y, zone)))) {
                         clearInterval(intervalId);
                         dead = true;
-                        reject();
+                        reject(false);
                     }
                     else if (zone.growthRate > 0 && currTick % DEATHZONE_GROW_RATE == 0) {
                         zone.grow();
@@ -156,7 +160,7 @@ function roundLoop(wave, mousePos) {
                 else if (!dead && contains(mousePos.x, mousePos.y, hitBox)) {
                     clearInterval(intervalId);
                     dead = true;
-                    reject();
+                    reject(false);
                 }
                 else if (currTick % MOVE_RATE == 0) {
                     let randSpeedModX = (Math.random() - 0.5) * 5;
@@ -192,7 +196,7 @@ function roundLoop(wave, mousePos) {
     
             if (timeSurvived >= waveStatus.timeToSurvive) {
                 clearInterval(intervalId);
-                resolve();
+                resolve(false);
             }
     
             if (enemiesToRemove != []) {
@@ -201,6 +205,12 @@ function roundLoop(wave, mousePos) {
             currTick++;
             if (currTick < 0) currTick = 0;
         }, delay);
+        window.addEventListener("keypress", function(e) {
+            if (e.key == "q") {
+                reject(true);
+                clearInterval(intervalId);
+            }
+        });
     });
 }
 
@@ -249,7 +259,7 @@ function padNumber(number) {
 }
 
 function getCanvas() {
-    return document.getElementsByTagName("canvas").item(0);
+    return canvas;
 }
 
 function createTooltip(text) {
@@ -295,11 +305,6 @@ function drawGoodLuck() {
             gameDiv.removeChild(tooltip);
         }, TEXT_FADE_DURATION);
     });
-}
-
-function startWave(wave) {
-    let funcName = "wave"+wave+"Init";
-    window[funcName](getCanvas(), TICK_RATE);
 }
 
 function getCanvasPos(x, y) {
@@ -391,3 +396,35 @@ function swapViews(oldId, newId) {
     document.getElementById(oldId).style.display = "none";
     document.getElementById(newId).style.display = "block";
 }
+
+// Populate level selection menu.
+let levelDiv = document.getElementById("levels-div");
+let levelTemplate = document.getElementsByClassName("level-select").item(0);
+
+var i = 1;
+let legalWave = true;
+while (legalWave) {
+    (function() {
+        let clone = levelTemplate.cloneNode(true);
+        let btn = clone.getElementsByTagName("button").item(0);
+        let funcName = "wave"+i+"FlavorText";
+        try {
+            let wave = i;
+            let name = window[funcName]();
+            btn.textContent += wave + " - " + name;
+            btn.onclick = function() {
+                mainLoop(wave);
+            }
+    
+            levelDiv.appendChild(clone);
+        }
+        catch (error) {
+            legalWave = false;
+        }
+    })();
+    i++;
+}
+
+TOTAL_WAVES = i-1;
+
+levelDiv.removeChild(levelTemplate);

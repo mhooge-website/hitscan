@@ -4,7 +4,19 @@ const DEATHZONE_RATES = [200, 200, 200, 200, 400];
 const DEATHZONE_WINDUP = 4;
 const MAX_SPEED = 8;
 const MIN_SPEED = 2;
-var DEATH_ZONES;
+
+function getDeathZone(index) {
+    let boundRect = canvas.getBoundingClientRect();
+    let zones = [
+        createDeathzone(0, 0, boundRect.width/4+1, boundRect.height, [220, 0, 0], DEATHZONE_WINDUP * TICK_RATE),
+        createDeathzone(boundRect.width/2 + boundRect.width/4 - 1, 0, boundRect.width/4+1, boundRect.height, [220, 0, 0], DEATHZONE_WINDUP * TICK_RATE),
+        createDeathzone(boundRect.width/4, 0, boundRect.width/2, boundRect.height/4, [220, 0, 0], DEATHZONE_WINDUP * TICK_RATE),
+        createDeathzone(boundRect.width/4, boundRect.height - boundRect.height/4, boundRect.width/2, boundRect.height/4, [220, 0, 0], DEATHZONE_WINDUP * TICK_RATE),
+        createDeathzone(boundRect.width/4, boundRect.height/4, boundRect.width/2, boundRect.height/2, [220, 0, 0], DEATHZONE_WINDUP * TICK_RATE, 1, true)
+    ];
+    DEATHZONE_RATES.pop();
+    return index < zones.length ? zones[index] : null;
+}
 
 function wave1FlavorText() {
     return "Meteor Shower";
@@ -21,25 +33,10 @@ function wave1StartBox(canvas) {
     }
 }
 
-function wave1Init(canvas, tickrate) {
-    let boundRect = canvas.getBoundingClientRect();    
-    DEATH_ZONES = [
-        createDeathzone(boundRect.width/4, boundRect.height/4, boundRect.width/2, boundRect.height/2, [220, 0, 0], DEATHZONE_WINDUP * tickrate, 1, true),
-        createDeathzone(boundRect.width/4, 0, boundRect.width/2, boundRect.height/4, [220, 0, 0], DEATHZONE_WINDUP * tickrate),
-        createDeathzone(boundRect.width/4, boundRect.height - boundRect.height/4, boundRect.width/2, boundRect.height/4, [220, 0, 0], DEATHZONE_WINDUP * tickrate),
-        createDeathzone(boundRect.width/2 + boundRect.width/4 - 1, 0, boundRect.width/4+1, boundRect.height, [220, 0, 0], DEATHZONE_WINDUP * tickrate),
-        createDeathzone(0, 0, boundRect.width/4+1, boundRect.height, [220, 0, 0], DEATHZONE_WINDUP * tickrate)
-    ]
-}
-
-function getRandomSpeed() {
-    return MIN_SPEED + Math.random() * (MAX_SPEED - MIN_SPEED)
-}
-
 function wave1Loop(canvas, enemies, deathZones, tick) {
     const SPAWN_SPACES = 4;
     const POLY_VARIANCE = (POLY_MAX - POLY_MIN);
-    if (tick % SPAWN_RATE == 0) {
+    if (tick % SPAWN_RATE == 0 && tick / TICK_RATE < SURVIVAL_TIME - 5) {
         let canvasRect = canvas.getBoundingClientRect();
         for (let i = 0; i < SPAWN_AMOUNT; i++) {
             let spawnPos = i / (SPAWN_AMOUNT / 4);
@@ -70,14 +67,9 @@ function wave1Loop(canvas, enemies, deathZones, tick) {
             enemies.push(createEnemy(x, y, speedX, speedY, "rand_poly", "gray", 8));
         }
     }
-    if (tick > 0 && tick % DEATHZONE_RATES[DEATHZONE_RATES.length-1] == 0 && DEATH_ZONES.length > 0) {
-        DEATHZONE_RATES.pop();
-        deathZones.push(DEATH_ZONES.pop());
+    if (tick > 0 && tick % DEATHZONE_RATES[DEATHZONE_RATES.length-1] == 0) {
+        let zone = getDeathZone(deathZones.length);
+        if (zone != null) deathZones.push(zone);
     }
-    return {
-        newEnemies: enemies,
-        newDeathzones: deathZones,
-        timeToSurvive: SURVIVAL_TIME,
-        finished: false
-    }
+    return createWaveObj(enemies, deathZones);
 }

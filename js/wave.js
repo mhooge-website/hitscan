@@ -1,13 +1,17 @@
 const SURVIVAL_TIME = 30;
 const POLY_MIN = 30, POLY_MAX = 80;
 
+function getRandomSpeed() {
+    return MIN_SPEED + Math.random() * (MAX_SPEED - MIN_SPEED)
+}
+
 function shuffleArray(arr) {
     let n = arr.length;
     for (let i = 1; i < arr.length; i++) {
-        let replaceIndex = Math.round(Math.floor() * n);
+        let replaceIndex = Math.floor(Math.random() * n);
         let temp = arr[i];
-        arr[replaceIndex] = temp;
         arr[i] = arr[replaceIndex];
+        arr[replaceIndex] = temp;
     }
     return arr;
 }
@@ -21,7 +25,7 @@ function createDeathzone(x, y, w, h, color, windupTime, growthRate=0, reversed=f
         color: color,
         growthRate: growthRate,
         reversed: reversed,
-        timeTillActive: windupTime.toFixed(0),
+        timeTillActive: Math.round(windupTime),
         timeSinceCreation: 0,
         grow: function() {
             let delta = this.reversed ? this.growthRate : -this.growthRate;
@@ -86,7 +90,7 @@ function createRandomPolygon(x, y, amount) {
 
     yVec.push(maxY - lastLeft);
     yVec.push(lastRight - maxY);
-
+    
     yVec = shuffleArray(yVec);
 
     let vector = [];
@@ -175,5 +179,13 @@ function createEnemy(x, y, deltaX, deltaY, shape, color, numPoints) {
                 h: hiY - lowY
             }
         }
+    }
+}
+
+function createWaveObj(enemies, deathZones) {
+    return {
+        newEnemies: enemies,
+        newDeathzones: deathZones,
+        timeToSurvive: SURVIVAL_TIME
     }
 }
