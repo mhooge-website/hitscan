@@ -1,5 +1,17 @@
 const SURVIVAL_TIME = 30;
 const POLY_MIN = 30, POLY_MAX = 80;
+var SPAWN_RATE = 150;
+var SPAWN_AMOUNT = 32;
+var MAX_SPEED = 8;
+var MIN_SPEED = 2;
+var DEATH_ZONES;
+var DEATHZONE_WINDUP;
+var DEATHZONE_RATES;
+
+function getDeathZone(index) {
+    DEATHZONE_RATES.pop();
+    return index < DEATH_ZONES.length ? DEATH_ZONES[index] : null;
+}
 
 function getRandomSpeed() {
     return MIN_SPEED + Math.random() * (MAX_SPEED - MIN_SPEED)
@@ -16,7 +28,49 @@ function shuffleArray(arr) {
     return arr;
 }
 
-function createDeathzone(x, y, w, h, color, windupTime, growthRate=0, reversed=false) {
+function spawnEnemiesAtEdge(edge, amount, tick, options={}, speed=null) {
+    let canvasRect = canvas.getBoundingClientRect();
+    let baselineX = edge < 2;
+    let baseline = 0, offset = 0, staticPos = 0;
+    let POLY_VARIANCE = (POLY_MAX - POLY_MIN);
+    let enemies = [];
+    let speedOffset = 0;
+    if (baselineX) {
+        baseline = canvasRect.width;
+        offset = canvasRect.left
+        staticPos = edge < 1 ? canvasRect.top - 10 : canvasRect.height - canvasRect.top - POLY_VARIANCE;
+        speedOffset = edge > 0 ? -1 : 1;
+    }
+    else {
+        baseline = canvasRect.height;
+        offset = canvasRect.top
+        staticPos = edge < 3 ? canvasRect.left - 10 : canvasRect.width - canvasRect.top - POLY_VARIANCE;
+        speedOffset = edge > 2 ? -1 : 1;
+    }
+    for (let i = 0; i < amount; i++) {
+        let pos = offset + (tick % 50) + ((i % amount) * (baseline / amount));
+        let x = baselineX ? pos : staticPos;
+        let y = baselineX ? staticPos : pos;
+        let speedPos = speed;
+        let speedStatic = speed;
+        if (speed == null) {
+            speedStatic = getRandomSpeed();
+            speedStatic = Math.random() > 0.5 ? speedStatic : -speedStatic;
+            speedPos = getRandomSpeed();
+        }
+        
+        let speedX = baselineX ? speedStatic : speedPos * speedOffset;
+        let speedY = baselineX ? speedPos * speedOffset : speedStatic;
+        let enemy = createEnemy(x, y, speedX, speedY);
+        Object.keys(options).forEach(function(key, index) {
+            enemy[key] = options[key];
+        });
+        enemies.push(enemy);
+    }
+    return enemies;
+}
+
+function createDeathzone(x, y, w, h, color, windupTime, growthRate=0, reversed=false, growSides=["x", "y", "w", "h"]) {
     return {
         x: x,
         y: y,
@@ -27,12 +81,26 @@ function createDeathzone(x, y, w, h, color, windupTime, growthRate=0, reversed=f
         reversed: reversed,
         timeTillActive: Math.round(windupTime),
         timeSinceCreation: 0,
+        static: this.growthRate == 0,
         grow: function() {
-            let delta = this.reversed ? this.growthRate : -this.growthRate;
-            this.x += delta;
-            this.y += delta;
-            this.w -= (delta * 2);
-            this.h -= (delta * 2);
+            let delta = this.reversed ? Math.sign(this.growthRate) : -Math.sign(this.growthRate);
+            for (let i = 0; i < growSides.length; i++) {
+                let prop = growSides[i];
+                if (prop == "x" || prop == "y") {
+                    this[prop] += delta;
+                }
+                else {
+                    let modifier = 1;
+                    if (prop == "w" && growSides.find(function(v, i, a) {
+                        return v == "x";
+                    }) || prop == "h" && growSides.find(function(v, i, a) {
+                        return v == "y";
+                    })) {
+                        modifier = 2;
+                    }
+                    this[prop] -= delta * modifier;
+                }
+            }
         }
     }
 }
@@ -141,7 +209,7 @@ function createShape(x, y, n, shape) {
     }
 }
 
-function createEnemy(x, y, deltaX, deltaY, shape, color, numPoints) {
+function createEnemy(x, y, deltaX, deltaY, shape="rand_poly", color="gray", numPoints=8, homing=false) {
     return {
         shape: shape,
         color: color,
@@ -149,6 +217,14 @@ function createEnemy(x, y, deltaX, deltaY, shape, color, numPoints) {
         dy: deltaY,
         active: true,
         points: createShape(x, y, numPoints, shape),
+        move: function() {
+            let randSpeedModX = (Math.random() - 0.5) * 5;
+            let randSpeedModY = (Math.random() - 0.5) * 5;
+            for (let j = 0; j < this.points.length; j++) {
+                this.points[j].x += this.dx + randSpeedModX;
+                this.points[j].y += this.dy + randSpeedModY;
+            }
+        },
         getBoundingRect: function() {
             if (this.shape == "rect") {
                 let lowX = this.points[0].x;

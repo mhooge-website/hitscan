@@ -1,31 +1,40 @@
 const TEXT_FADE_DURATION = 3500;
 const MOVE_RATE = 2;
-const DEATHZONE_GROW_RATE = 10;
-const DEBUG = 0;
+const DEBUG = 1;
 var TOTAL_WAVES = 1;
 
 async function mainLoop(wave=1, showIntro=true) {
+    eraseRect(canvas.getContext("2d"), getCanvasBox());
     let mousePos = {x: 0, y: 0};
-    if (showIntro || DEBUG == 0) {
+    if (showIntro && DEBUG == 0) {
         // Draw round intro text.
         await drawRoundIntro(wave);
-        // Draw mouse start box.
-        await drawStartBox(wave).then(function(pos) {
-            mousePos = pos;
-        });
-        // Draw good luck message.
-        await drawGoodLuck();
     }
+    // Draw mouse start box.
+    await drawStartBox(wave).then(function(pos) {
+        mousePos = pos;
+    });
+    // Draw good luck message.
+    await drawGoodLuck();
+    window["wave"+wave+"Initialize"]();
     // Start round obstacles.
     roundLoop(wave, mousePos).then(async function() {
         await showWinnerText();
-        eraseRect(canvas.getContext("2d"), getCanvasBox());
         mainLoop(wave+1);
     }, async function(quit) {
         if (!quit) {
-            await showDeathText();
+            showDeathText().then(function(retry) {
+                if (retry) {
+                    mainLoop(wave, false);
+                }
+                else {
+                    swapViews("game-div", "menu-div");
+                }
+            });
         }
-        swapViews("game-div", "menu-div");
+        else {
+            swapViews("game-div", "menu-div");
+        }
     });
 }
 
@@ -70,14 +79,21 @@ function showDeathText() {
         setTimeout(function() {
             let gameDiv = document.getElementById("game-div");
             let tooltip = createTooltip("<span class='tooltip-main'>You got hit</span><br>"+
-                "<span class='tooltip-sub'>Better luck next time!</span>"
-            )
+                "<span class='tooltip-sub'>'Space' to retry.</span><br>"+
+                "<span class='tooltip-sub'>'Q' to quit.</span>"
+            , ["tooltip-fade-in", "tooltip-fade-in", "tooltip-fade-in"]);
             tooltip.style.color = "red";
             gameDiv.appendChild(tooltip);
-            setTimeout(function() {
-                gameDiv.removeChild(tooltip);
-                resolve();
-            }, TEXT_FADE_DURATION);
+            window.addEventListener("keypress", function(e) {
+                if (e.key == " ") {
+                    gameDiv.removeChild(tooltip);
+                    resolve(true);
+                }
+                else if (e.key == "q") {
+                    if (gameDiv.contains(tooltip)) gameDiv.removeChild(tooltip);
+                    resolve(false);
+                }
+            });
         }, 500);
     });
 }
@@ -89,7 +105,7 @@ function showWinnerText() {
             let gameDiv = document.getElementById("game-div");
             let tooltip = createTooltip("<span class='tooltip-main'>You Survived!</span><br>"+
                 "<span class='tooltip-sub'>Get ready for the next wave</span>"
-            )
+            , ["tooltip-fade-in", "tooltip-fade-in"]);
             gameDiv.appendChild(tooltip);
             setTimeout(function() {
                 gameDiv.removeChild(tooltip);
@@ -125,9 +141,15 @@ function roundLoop(wave, mousePos) {
         let currTick = 0;
         let timeSurvived = -1;
         let dead = false;
+        let quit = false;
         document.getElementById("countdown-div").style.display = "block";
         canvas.addEventListener("mousemove", function(e) {
             mousePos = getCanvasPos(e.clientX, e.clientY);
+        });
+        window.addEventListener("keypress", function(e) {
+            if (e.key == "q") {
+                quit = true;
+            }
         });
         let intervalId = setInterval(function() {
             // Erase and calculate whether the player is touching a death zone.
@@ -138,11 +160,9 @@ function roundLoop(wave, mousePos) {
                 if (zone.timeSinceCreation >= zone.timeTillActive) {
                     if (!dead && ((!zone.reversed && contains(mousePos.x, mousePos.y, zone)) ||
                     (zone.reversed && !contains(mousePos.x, mousePos.y, zone)))) {
-                        clearInterval(intervalId);
                         dead = true;
-                        reject(false);
                     }
-                    else if (zone.growthRate > 0 && currTick % DEATHZONE_GROW_RATE == 0) {
+                    else if (!zone.static && currTick % (DEATHZONE_MAX_GROWTH-Math.abs(zone.growthRate)) == 0) {
                         zone.grow();
                     }
                 }
@@ -158,21 +178,14 @@ function roundLoop(wave, mousePos) {
                     enemy.active = false;
                 }
                 else if (!dead && contains(mousePos.x, mousePos.y, hitBox)) {
-                    clearInterval(intervalId);
                     dead = true;
-                    reject(false);
                 }
                 else if (currTick % MOVE_RATE == 0) {
-                    let randSpeedModX = (Math.random() - 0.5) * 5;
-                    let randSpeedModY = (Math.random() - 0.5) * 5;
-                    for (let j = 0; j < enemy.points.length; j++) {
-                        enemy.points[j].x += enemy.dx + randSpeedModX;
-                        enemy.points[j].y += enemy.dy + randSpeedModY;
-                    }
+                    enemy.move();
                 }
             }
             let funcName = "wave"+wave+"Loop";
-            let waveStatus = window[funcName](canvas, activeEnemies, deathZones, currTick);
+            let waveStatus = window[funcName](activeEnemies, deathZones, currTick);
             let timeSec = Math.round(currTick / TICK_RATE);
             if (timeSec != timeSurvived) {
                 timeSurvived = timeSec;
@@ -204,13 +217,12 @@ function roundLoop(wave, mousePos) {
             }
             currTick++;
             if (currTick < 0) currTick = 0;
-        }, delay);
-        window.addEventListener("keypress", function(e) {
-            if (e.key == "q") {
-                reject(true);
+
+            if (quit || dead) {
                 clearInterval(intervalId);
+                reject(quit);
             }
-        });
+        }, delay);
     });
 }
 
@@ -262,10 +274,27 @@ function getCanvas() {
     return canvas;
 }
 
-function createTooltip(text) {
+function createTooltip(text, classNames=[]) {
     let tooltip = document.createElement("div");
     tooltip.className = "tooltip";
     tooltip.innerHTML = text;
+    if (classNames.length == 1) {
+        tooltip.style.marginTop = "-100px"
+        tooltip.classList.add(classNames[0]);
+        tooltip.style.animationDuration = TEXT_FADE_DURATION;
+        tooltip.style.opacity = 0;
+    }
+    else if (classNames.length > 1) {
+        let tips = tooltip.getElementsByTagName("span");
+        for (let i = 0; i < tips.length; i++) {
+            let subTip = tips.item(i);
+            subTip.style.opacity = 0;
+            if (i > 0) {
+                subTip.style.animationDelay = "0.5s";
+            }
+            subTip.classList.add(classNames[i]);
+        }
+    }
     return tooltip;
 }
 
@@ -276,7 +305,7 @@ function drawRoundIntro(wave) {
         let tooltip = createTooltip("<span class='tooltip-main'>Wave " + 
             padNumber(wave) + 
             "</span><br><span class='tooltip-sub'>"+flavorText+"</span>"
-        )
+        , ["tooltip-fade-both", "tooltip-fade-both"]);
         let gameDiv = document.getElementById("game-div");
         setTimeout(function() {
             gameDiv.removeChild(tooltip);
@@ -292,7 +321,7 @@ function drawGoodLuck() {
         let tooltip = createTooltip(
             "<span class='tooltip-main'>Survive for "+SURVIVAL_TIME+" seconds</span><br>"+
             "<span class='tooltip-sub'>Good Luck!</span>"
-        );
+        , ["tooltip-fade-both", "tooltip-fade-both"]);
         tooltip.style.transform = "translateY(-56px)";
         let gameDiv = document.getElementById("game-div");
         gameDiv.appendChild(tooltip);
@@ -319,6 +348,95 @@ function contains(x1, y1, box) {
     return x1 > box.x && x1 < box.x + box.w && y1 > box.y && y1 < box.y + box.h;
 }
 
+function eraseBoxArrow(ctx, bounds) {
+    eraseRect(ctx, bounds);
+}
+
+function drawArrow(upwards, ctx, color, props) {
+    let arrowHeight = props.arrowHeight;
+    let arrowWidth = props.arrowWidth;
+    let arrowMid = props.arrowMid;
+    let startY = props.startY;
+    let offset = props.offset;
+    let oldFill = ctx.fillStyle;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    if (upwards) {
+        // Left side of arrow.
+        let x = arrowMid - (arrowWidth/2);
+        let y = startY + arrowHeight + offset;
+        ctx.moveTo(x, y);
+        // Arrow head.
+        y = (y-arrowHeight)+arrowWidth;
+        ctx.lineTo(x, y);
+        ctx.lineTo(arrowMid - arrowWidth, y);
+        ctx.lineTo(arrowMid, y-arrowWidth);
+        x = arrowMid + (arrowWidth);
+        ctx.lineTo(x, y);
+        x = x - arrowWidth/2, y;
+        ctx.lineTo(x, y);
+        // Right side of arrow.
+        y = startY + arrowHeight + offset;
+        ctx.lineTo(x, y);
+        ctx.lineTo(x-arrowWidth, y);
+    }
+    else {
+        // Left side of arrow.
+        let x = arrowMid - (arrowWidth/2);
+        let y = startY - arrowHeight - offset;
+        ctx.moveTo(x, y);
+        // Arrow head.
+        y = (y+arrowHeight)-arrowWidth;
+        ctx.lineTo(x, y);
+        ctx.lineTo(arrowMid - arrowWidth, y);
+        ctx.lineTo(arrowMid, y+arrowWidth);
+        x = arrowMid + (arrowWidth);
+        ctx.lineTo(x, y);
+        x = x - arrowWidth/2, y;
+        ctx.lineTo(x, y);
+        // Right side of arrow.
+        y = startY - arrowHeight - offset;
+        ctx.lineTo(x, y);
+        ctx.lineTo(x-arrowWidth, y);
+    }
+    ctx.fill();
+    ctx.fillStyle = oldFill;
+}
+
+function drawBoxArrow(ctx, box, tooltip) {
+    let arrowHeight = 200;
+    let arrowWidth = 60;
+    let boxX = box.x + (box.w / 2);
+    let boxInCentre = box.x > tooltip.offsetLeft && box.x < tooltip.offsetLeft + tooltip.offsetWidth;
+    let tooltipCloseAbove = box.y - tooltip.offsetTop - arrowHeight - 50 < 0;
+    let upwards = boxInCentre && tooltipCloseAbove;
+    let delay = 50;
+    let offset = 25;
+    let delta = -1;
+    let arrowBounds = null;
+    let arrowProps = {arrowHeight: arrowHeight, arrowWidth: arrowWidth, arrowMid: boxX, offset: offset};
+    if (upwards) {
+        arrowBounds =  {x: boxX - arrowWidth, y: box.y + box.h + 5, w: arrowWidth*2, h: arrowHeight + arrowWidth + 25};
+        arrowProps["startY"] = box.y + box.h;
+    }
+    else {
+        arrowBounds = {x: boxX - arrowWidth, y: box.y - arrowHeight - arrowWidth - 25, w: arrowWidth*2, h: arrowHeight + arrowWidth + 20};
+        arrowProps["startY"] = box.y;
+    }
+    let bgColor = window.getComputedStyle(document.body, null).backgroundColor;
+    let intervalId = setInterval(() => {
+        eraseRect(ctx, arrowBounds);
+        offset += delta;
+        arrowProps.offset = offset + 7;
+        drawArrow(upwards, ctx, "rgb(30, 0, 00)", arrowProps);
+        arrowProps.offset = offset;
+        drawArrow(upwards, ctx, "rgb(220, 0, 0)", arrowProps);
+        if (offset == 10) delta = 1;
+        else if (offset == 25) delta = -1;
+    }, delay);
+    return {bounds: arrowBounds, intervalId: intervalId};
+}
+
 function drawStartBox(wave) {
     return new Promise(function(resolve, reject) {
         let funcName = "wave"+wave+"StartBox";
@@ -329,14 +447,18 @@ function drawStartBox(wave) {
         ctx.lineWidth = 1;
         drawRect(ctx, box, "rgb(255, 0, 0)");
     
-        let tooltip = createTooltip("Place your cursor here!")
+        let tooltip = createTooltip("Move to the start position!", ["tooltip-fade-in"]);
         let gameDiv = document.getElementById("game-div");
         gameDiv.appendChild(tooltip);
+
+        let arrowObj = drawBoxArrow(ctx, box, tooltip);
     
         let triggered = false;
         canvas.addEventListener("mousemove", function(e) {
             let pos = getCanvasPos(e.clientX, e.clientY);
             if (!triggered && contains(pos.x, pos.y, box)) {
+                eraseBoxArrow(ctx, arrowObj.bounds);
+                clearInterval(arrowObj.intervalId);
                 gameDiv.removeChild(tooltip);
                 fadeBox(box);
                 resolve(pos);
@@ -383,13 +505,12 @@ function fadeBox(box) {
     }, delay);
 }
 
-function initialize() {
-    swapViews("menu-div", "game-div");
+function initialize(divId) {
+    swapViews(divId, "game-div");
     let gameDiv = document.getElementById("game-div");
     let canvas = getCanvas();
     canvas.width = gameDiv.offsetWidth;
     canvas.height = gameDiv.offsetHeight;
-    mainLoop();
 }
 
 function swapViews(oldId, newId) {
@@ -413,7 +534,8 @@ while (legalWave) {
             let name = window[funcName]();
             btn.textContent += wave + " - " + name;
             btn.onclick = function() {
-                mainLoop(wave);
+                initialize('levels-div');
+                mainLoop(wave, true);
             }
     
             levelDiv.appendChild(clone);

@@ -84,7 +84,19 @@ canvas {
     border: 1px solid white;
 }
 
-@keyframes tooltipFadeIn {
+@keyframes tooltipFade {
+    0% {
+        opacity: 0;
+    }
+    20% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 1;
+    }
+}
+
+@keyframes tooltipFadeBoth {
     0% {
         opacity: 0;
     }
@@ -102,7 +114,7 @@ canvas {
 .tooltip {
     position: absolute;
     text-align: center;
-    color: rgb(25, 54, 214);
+    color: rgb(39, 101, 194);
     font-size: 3rem;
     width: 800px;
     height: 100px;
@@ -115,17 +127,22 @@ canvas {
     letter-spacing: 3px;
 }
 
-.tooltip-main {
-    opacity: 0;
-    animation: tooltipFadeIn 3s linear 0s 1 normal forwards;
-}
-
 .tooltip-sub {
     font-style: italic;
     font-family: 'Courier New', Courier, monospace;
     font-size: 2.5rem;
     font-weight: bold;
-    opacity: 0;
-    animation: tooltipFadeIn 3s linear 0.5s 1 normal forwards;
     letter-spacing: 1px;
+}
+
+.tooltip-fade-in {
+    animation: tooltipFade 3s linear 0s 1 normal forwards;
+}
+
+.tooltip-fade-out {
+    animation: tooltipFade 3s linear 0s 1 reverse forwards;
+}
+
+.tooltip-fade-both {
+    animation: tooltipFadeBoth 3s linear 0s 1 normal forwards;
 }
