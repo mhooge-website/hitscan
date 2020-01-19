@@ -9,7 +9,7 @@ function wave1Initialize() {
         createDeathzone(boundRect.width/2 + boundRect.width/4 - 1, 0, boundRect.width/4+1, boundRect.height, [220, 0, 0], DEATHZONE_WINDUP * TICK_RATE),
         createDeathzone(boundRect.width/4, 0, boundRect.width/2, boundRect.height/4, [220, 0, 0], DEATHZONE_WINDUP * TICK_RATE),
         createDeathzone(boundRect.width/4, boundRect.height - boundRect.height/4, boundRect.width/2, boundRect.height/4, [220, 0, 0], DEATHZONE_WINDUP * TICK_RATE),
-        createDeathzone(boundRect.width/4, boundRect.height/4, boundRect.width/2, boundRect.height/2, [220, 0, 0], DEATHZONE_WINDUP * TICK_RATE, 1, true)
+        createDeathzone(boundRect.width/4-1, boundRect.height/4-1, boundRect.width/2+2, boundRect.height/2+2, [220, 0, 0], DEATHZONE_WINDUP * TICK_RATE, 7, true)
     ];
 }
 
@@ -36,7 +36,7 @@ function wave1Loop(enemies, deathZones, tick) {
             enemies = enemies.concat(newEnemies);
         }
     }
-    if (tick > 0 && tick % DEATHZONE_RATES[DEATHZONE_RATES.length-1] == 0) {
+    if (tick > 0 && tick % DEATHZONE_RATES[deathZones.length] == 0) {
         let zone = getDeathZone(deathZones.length);
         if (zone != null) deathZones.push(zone);
     }

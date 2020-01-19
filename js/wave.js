@@ -1,4 +1,4 @@
-const SURVIVAL_TIME = 30;
+var SURVIVAL_TIME = 30;
 const POLY_MIN = 30, POLY_MAX = 80;
 var SPAWN_RATE = 150;
 var SPAWN_AMOUNT = 32;
@@ -9,7 +9,6 @@ var DEATHZONE_WINDUP;
 var DEATHZONE_RATES;
 
 function getDeathZone(index) {
-    DEATHZONE_RATES.pop();
     return index < DEATH_ZONES.length ? DEATH_ZONES[index] : null;
 }
 
@@ -215,14 +214,29 @@ function createEnemy(x, y, deltaX, deltaY, shape="rand_poly", color="gray", numP
         color: color,
         dx: deltaX,
         dy: deltaY,
+        randSpeedMod: 5,
         active: true,
+        homing: homing,
         points: createShape(x, y, numPoints, shape),
-        move: function() {
-            let randSpeedModX = (Math.random() - 0.5) * 5;
-            let randSpeedModY = (Math.random() - 0.5) * 5;
+        move: function(mousePos) {
+            let dx = this.dx;
+            let dy = this.dy;
+            if (this.homing) {
+                let rect = this.getBoundingRect();
+                let midX = rect.x + (rect.w/2);
+                let midY = rect.y + (rect.h/2);
+                let slope = (mousePos.y - midY) / (mousePos.x - midX);
+                let intersect = -(slope * midX - midY);
+                newY = slope * (midX+dx) + intersect;
+                newY = Math.min(newY - midY, MAX_SPEED);
+            }
+            else if (this.randSpeedMod != 0) {
+                dx += (Math.random() - 0.5) * this.randSpeedMod;
+                dx += (Math.random() - 0.5) * this.randSpeedMod;
+            }
             for (let j = 0; j < this.points.length; j++) {
-                this.points[j].x += this.dx + randSpeedModX;
-                this.points[j].y += this.dy + randSpeedModY;
+                this.points[j].x += dx
+                this.points[j].y += dy;
             }
         },
         getBoundingRect: function() {

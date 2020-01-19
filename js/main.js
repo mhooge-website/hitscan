@@ -131,6 +131,17 @@ function getBoxMidpoint(box) {
     }
 }
 
+function insideDeathzone(mousePos, zone) {
+    if (!zone.reversed) {
+        return contains(mousePos.x, mousePos.y, zone);
+    }
+    else {
+        let zoneW = (zone.timeSinceCreation - zone.timeTillActive) / (DEATHZONE_MAX_GROWTH - zone.growthRate) * 2;
+        let reverseBox = {x: zone.x + zoneW, y: zone.y + zoneW, w: zone.w - (zoneW*2), h: zone.h - (zoneW*2)};
+        return !contains(mousePos.x, mousePos.y, reverseBox);
+    }
+}
+
 function roundLoop(wave, mousePos) {
     return new Promise(function(resolve, reject) {
         const delay = 1000/TICK_RATE;
@@ -158,8 +169,7 @@ function roundLoop(wave, mousePos) {
                 eraseRect(ctx, zone);
                 zone.timeSinceCreation += 1;
                 if (zone.timeSinceCreation >= zone.timeTillActive) {
-                    if (!dead && ((!zone.reversed && contains(mousePos.x, mousePos.y, zone)) ||
-                    (zone.reversed && !contains(mousePos.x, mousePos.y, zone)))) {
+                    if (!dead && insideDeathzone(mousePos, zone)) {
                         dead = true;
                     }
                     else if (!zone.static && currTick % (DEATHZONE_MAX_GROWTH-Math.abs(zone.growthRate)) == 0) {
@@ -181,7 +191,7 @@ function roundLoop(wave, mousePos) {
                     dead = true;
                 }
                 else if (currTick % MOVE_RATE == 0) {
-                    enemy.move();
+                    enemy.move(mousePos);
                 }
             }
             let funcName = "wave"+wave+"Loop";
@@ -254,8 +264,8 @@ function drawDeathzone(ctx, zone) {
     let color = "rgb(" + colors.join(", ") + ")";
     if (zone.reversed) {
         let oldWidth = ctx.lineWidth;
-        if (zone.growthRate > 0) {
-            ctx.lineWidth = activeSince * zone.growthRate;
+        if (zone.growthRate != 0) {
+            ctx.lineWidth = activeSince / (DEATHZONE_MAX_GROWTH - Math.abs(zone.growthRate)) * 2
         }
         drawRect(ctx, zone, color);
         ctx.lineWidth = oldWidth;
@@ -423,7 +433,6 @@ function drawBoxArrow(ctx, box, tooltip) {
         arrowBounds = {x: boxX - arrowWidth, y: box.y - arrowHeight - arrowWidth - 25, w: arrowWidth*2, h: arrowHeight + arrowWidth + 20};
         arrowProps["startY"] = box.y;
     }
-    let bgColor = window.getComputedStyle(document.body, null).backgroundColor;
     let intervalId = setInterval(() => {
         eraseRect(ctx, arrowBounds);
         offset += delta;
