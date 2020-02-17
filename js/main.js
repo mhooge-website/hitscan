@@ -136,7 +136,7 @@ function insideDeathzone(mousePos, zone) {
         return contains(mousePos.x, mousePos.y, zone);
     }
     else {
-        let zoneW = (zone.timeSinceCreation - zone.timeTillActive) / (DEATHZONE_MAX_GROWTH - zone.growthRate) * 2;
+        let zoneW = (zone.timeSinceCreation - zone.timeTillActive) / (DEATHZONE_MAX_GROWTH - zone.growthRate);
         let reverseBox = {x: zone.x + zoneW, y: zone.y + zoneW, w: zone.w - (zoneW*2), h: zone.h - (zoneW*2)};
         return !contains(mousePos.x, mousePos.y, reverseBox);
     }
